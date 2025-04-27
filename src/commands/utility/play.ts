@@ -13,12 +13,18 @@ import {
   NoSubscriberBehavior,
   AudioPlayerStatus,
 } from "@discordjs/voice";
-import path from "path";
-import fs from "fs";
+import ytdl from "@distube/ytdl-core";
+import { Readable } from "stream";
 
 export const data = new SlashCommandBuilder()
   .setName("play")
-  .setDescription("Toca uma música no canal de voz");
+  .setDescription("Toca uma música no canal de voz")
+  .addStringOption((option) =>
+    option
+      .setName("url")
+      .setDescription("URL do YouTube da música")
+      .setRequired(true)
+  );
 
 export const execute = async (
   client: Client,
@@ -43,53 +49,51 @@ export const execute = async (
   }
 
   const voiceChannel = member.voice.channel;
+  const url = interaction.options.get("url", true).value as string;
+
+  if (!ytdl.validateURL(url)) {
+    return interaction.reply({
+      content: "❌ URL do YouTube inválida!",
+      ephemeral: true,
+    });
+  }
 
   await interaction.deferReply();
 
-  try {
-    const connection = joinVoiceChannel({
-      channelId: voiceChannel.id,
-      guildId: voiceChannel.guild.id,
-      adapterCreator: voiceChannel.guild.voiceAdapterCreator,
-      selfDeaf: true,
-      selfMute: false,
-    });
+  const connection = joinVoiceChannel({
+    channelId: voiceChannel.id,
+    guildId: voiceChannel.guild.id,
+    adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+    selfDeaf: true,
+    selfMute: false,
+  });
 
-    await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
+  await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
 
-    const player = createAudioPlayer({
-      behaviors: {
-        noSubscriber: NoSubscriberBehavior.Pause,
-      },
-    });
+  const player = createAudioPlayer({
+    behaviors: {
+      noSubscriber: NoSubscriberBehavior.Pause,
+    },
+  });
 
-    connection.subscribe(player);
+  connection.subscribe(player);
 
-    const audioFilePath = path.resolve("audio.mp3");
+  const stream = ytdl(url, {
+    filter: "audioonly",
+    quality: "highestaudio",
+    highWaterMark: 1 << 25,
+  });
 
-    if (!fs.existsSync(audioFilePath)) {
-      return interaction.editReply({
-        content: "❌ Arquivo de áudio não encontrado no servidor.",
-      });
-    }
+  const resource = createAudioResource(stream);
 
-    const resource = createAudioResource(audioFilePath);
+  player.play(resource);
 
-    player.play(resource);
+  player.on(AudioPlayerStatus.Idle, () => {
+    connection.destroy();
+  });
 
-    player.on(AudioPlayerStatus.Idle, () => {
-      connection.destroy();
-    });
-
-    await interaction.editReply({
-      content: `🎵 Tocando áudio: **audio.mp3** no canal **${voiceChannel.name}**!`,
-    });
-  } catch (error) {
-    console.error("Erro ao tentar tocar música:", error);
-
-    return interaction.editReply({
-      content:
-        "❌ Ocorreu um erro ao tentar tocar a música. Verifique se o bot tem todas as permissões e tente novamente.",
-    });
-  }
+  const info = await ytdl.getInfo(url);
+  await interaction.editReply({
+    content: `🎵 Tocando: **${info.videoDetails.title}** no canal **${voiceChannel.name}**!`,
+  });
 };
