@@ -4,17 +4,13 @@ import {
   SlashCommandBuilder,
   GuildMember,
 } from "discord.js";
-import {
-  joinVoiceChannel,
-  entersState,
-  VoiceConnectionStatus,
-  createAudioPlayer,
-  createAudioResource,
-  NoSubscriberBehavior,
-  AudioPlayerStatus,
-} from "@discordjs/voice";
+
 import ytdl from "@distube/ytdl-core";
-import { Readable } from "stream";
+import { Track } from "@/@types/types";
+import { queueManager } from "@/lib/discord/player/queueManager";
+import { formatDuration } from "@/lib/utils/format-duration";
+import { trackEmbed } from "@/lib/discord/embeds/track-embed";
+import { createPlayerButtons } from "@/lib/discord/components/create-button-custom";
 
 export const data = new SlashCommandBuilder()
   .setName("play")
@@ -48,7 +44,6 @@ export const execute = async (
     });
   }
 
-  const voiceChannel = member.voice.channel;
   const url = interaction.options.get("url", true).value as string;
 
   if (!ytdl.validateURL(url)) {
@@ -60,40 +55,35 @@ export const execute = async (
 
   await interaction.deferReply();
 
-  const connection = joinVoiceChannel({
-    channelId: voiceChannel.id,
-    guildId: voiceChannel.guild.id,
-    adapterCreator: voiceChannel.guild.voiceAdapterCreator,
-    selfDeaf: true,
-    selfMute: false,
-  });
-
-  await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
-
-  const player = createAudioPlayer({
-    behaviors: {
-      noSubscriber: NoSubscriberBehavior.Pause,
-    },
-  });
-
-  connection.subscribe(player);
-
-  const stream = ytdl(url, {
-    filter: "audioonly",
-    quality: "highestaudio",
-    highWaterMark: 1 << 25,
-  });
-
-  const resource = createAudioResource(stream);
-
-  player.play(resource);
-
-  player.on(AudioPlayerStatus.Idle, () => {
-    connection.destroy();
-  });
-
   const info = await ytdl.getInfo(url);
+  const track: Track = {
+    url: info.videoDetails.video_url,
+    title: info.videoDetails.title,
+    duration: formatDuration(info.videoDetails.lengthSeconds),
+    thumbnail: info.videoDetails.thumbnails[0].url,
+    requestedBy: interaction.user.username,
+  };
+
+  const isFirstTrack = await queueManager.addTrackToQueue(
+    interaction.guild.id,
+    member.voice.channel,
+    track
+  );
+
+  const position = isFirstTrack ? "🎵 Em reprodução" : "📝 Adicionado à fila";
+
+  const queueEmbed = trackEmbed(
+    interaction,
+    track.title,
+    track.url,
+    track.thumbnail,
+    track.duration,
+    position,
+    track.requestedBy
+  );
+
   await interaction.editReply({
-    content: `🎵 Tocando: **${info.videoDetails.title}** no canal **${voiceChannel.name}**!`,
+    embeds: [queueEmbed],
+    components: createPlayerButtons(interaction.guild.id),
   });
 };
