@@ -4,7 +4,6 @@ import {
   SlashCommandBuilder,
   GuildMember,
 } from "discord.js";
-
 import ytdl from "@distube/ytdl-core";
 import { Track } from "@/@types/types";
 import { queueManager } from "@/lib/discord/player/queueManager";
@@ -26,14 +25,17 @@ export const execute = async (
   client: Client,
   interaction: CommandInteraction
 ) => {
-  if (!interaction.guild) {
+  const guild = interaction.guild;
+  const url = interaction.options.get("url", true).value as string;
+
+  if (!guild) {
     return interaction.reply({
       content: "❌ Este comando só pode ser usado em servidores.",
       ephemeral: true,
     });
   }
 
-  const member = (await interaction.guild.members.fetch(
+  const member = (await guild.members.fetch(
     interaction.user.id
   )) as GuildMember;
 
@@ -44,8 +46,6 @@ export const execute = async (
     });
   }
 
-  const url = interaction.options.get("url", true).value as string;
-
   if (!ytdl.validateURL(url)) {
     return interaction.reply({
       content: "❌ URL do YouTube inválida!",
@@ -55,35 +55,40 @@ export const execute = async (
 
   await interaction.deferReply();
 
-  const info = await ytdl.getInfo(url);
-  const track: Track = {
-    url: info.videoDetails.video_url,
-    title: info.videoDetails.title,
-    duration: formatDuration(info.videoDetails.lengthSeconds),
-    thumbnail: info.videoDetails.thumbnails[0].url,
-    requestedBy: interaction.user.username,
-  };
+  const track = await getTrackData(url, interaction.user.username);
 
   const isFirstTrack = await queueManager.addTrackToQueue(
-    interaction.guild.id,
+    guild.id,
     member.voice.channel,
     track
   );
 
-  const position = isFirstTrack ? "🎵 Em reprodução" : "📝 Adicionado à fila";
-
-  const queueEmbed = trackEmbed(
+  const embed = trackEmbed(
     interaction,
     track.title,
     track.url,
     track.thumbnail,
     track.duration,
-    position,
+    isFirstTrack ? "🎵 Em reprodução" : "📝 Adicionado à fila",
     track.requestedBy
   );
 
   await interaction.editReply({
-    embeds: [queueEmbed],
-    components: createPlayerButtons(interaction.guild.id),
+    embeds: [embed],
+    components: createPlayerButtons(guild.id),
   });
+};
+
+const getTrackData = async (
+  url: string,
+  requestedBy: string
+): Promise<Track> => {
+  const info = await ytdl.getInfo(url);
+  return {
+    url: info.videoDetails.video_url,
+    title: info.videoDetails.title,
+    duration: formatDuration(info.videoDetails.lengthSeconds),
+    thumbnail: info.videoDetails.thumbnails[0].url,
+    requestedBy,
+  };
 };
