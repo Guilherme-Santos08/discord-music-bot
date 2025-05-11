@@ -46,6 +46,18 @@ export const execute = async (
     });
   }
 
+  // Verifica se o BOT tem permissão para entrar no canal de voz
+  const botMember = guild.members.me;
+  if (
+    !botMember ||
+    !member.voice.channel.permissionsFor(botMember).has("Connect")
+  ) {
+    return interaction.reply({
+      content: "❌ O bot não tem permissão para entrar neste canal de voz!",
+      ephemeral: true,
+    });
+  }
+
   if (isPlaylistUrl(url)) {
     return playPlaylist(guild, member, url, interaction);
   } else {
