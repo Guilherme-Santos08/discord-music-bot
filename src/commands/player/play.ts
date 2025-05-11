@@ -6,10 +6,10 @@ import {
 } from "discord.js";
 import ytdl from "@distube/ytdl-core";
 import { Track } from "@/@types/types";
-import { queueManager } from "@/lib/discord/player/queueManager";
 import { formatDuration } from "@/lib/utils/format-duration";
-import { trackEmbed } from "@/lib/discord/embeds/track-embed";
-import { createPlayerButtons } from "@/lib/discord/components/create-button-custom";
+import { isPlaylistUrl } from "@/lib/utils/is-playlist-url";
+import { playSingleTrack } from "@/lib/discord/player/play-single-track";
+import { playPlaylist } from "@/lib/discord/player/play-playlist";
 
 export const data = new SlashCommandBuilder()
   .setName("play")
@@ -46,37 +46,11 @@ export const execute = async (
     });
   }
 
-  if (!ytdl.validateURL(url)) {
-    return interaction.reply({
-      content: "❌ URL do YouTube inválida!",
-      ephemeral: true,
-    });
+  if (isPlaylistUrl(url)) {
+    return playPlaylist(guild, member, url, interaction);
+  } else {
+    return playSingleTrack(guild, member, url, interaction);
   }
-
-  await interaction.deferReply();
-
-  const track = await getTrackData(url, interaction.user.username);
-
-  const isFirstTrack = await queueManager.addTrackToQueue(
-    guild.id,
-    member.voice.channel,
-    track
-  );
-
-  const embed = trackEmbed(
-    interaction,
-    track.title,
-    track.url,
-    track.thumbnail,
-    track.duration,
-    isFirstTrack ? "🎵 Em reprodução" : "📝 Adicionado à fila",
-    track.requestedBy
-  );
-
-  await interaction.editReply({
-    embeds: [embed],
-    components: createPlayerButtons(guild.id),
-  });
 };
 
 const getTrackData = async (
