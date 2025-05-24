@@ -4,9 +4,6 @@ import {
   SlashCommandBuilder,
   GuildMember,
 } from "discord.js";
-import ytdl from "@distube/ytdl-core";
-import { Track } from "@/@types/types";
-import { formatDuration } from "@/lib/utils/format-duration";
 import { isPlaylistUrl } from "@/lib/utils/is-playlist-url";
 import { playSingleTrack } from "@/lib/discord/player/play-single-track";
 import { playPlaylist } from "@/lib/discord/player/play-playlist";
@@ -48,12 +45,11 @@ export const execute = async (
 
   // Verifica se o BOT tem permissão para entrar no canal de voz
   const botMember = guild.members.me;
-  if (
-    !botMember ||
-    !member.voice.channel.permissionsFor(botMember).has("Connect")
-  ) {
+  const voiceChannel = member.voice.channel;
+  if (!botMember || !voiceChannel.permissionsFor(botMember).has("Connect")) {
     return interaction.reply({
-      content: "❌ O bot não tem permissão para entrar neste canal de voz!",
+      content:
+        "❌ O bot não tem permissão ou cargo suficiente para entrar neste canal de voz! Verifique as permissões e cargos do canal.",
       ephemeral: true,
     });
   }
@@ -63,18 +59,4 @@ export const execute = async (
   } else {
     return playSingleTrack(guild, member, url, interaction);
   }
-};
-
-const getTrackData = async (
-  url: string,
-  requestedBy: string
-): Promise<Track> => {
-  const info = await ytdl.getInfo(url);
-  return {
-    url: info.videoDetails.video_url,
-    title: info.videoDetails.title,
-    duration: formatDuration(info.videoDetails.lengthSeconds),
-    thumbnail: info.videoDetails.thumbnails[0].url,
-    requestedBy,
-  };
 };

@@ -149,6 +149,13 @@ class QueueManager {
     return queue.isPlaying;
   }
 
+  public clearQueue(guildId: string): boolean {
+    const queue = this.guildQueues.get(guildId);
+    if (!queue || queue.queue.length === 0) return false;
+    queue.queue = [];
+    return true;
+  }
+
   private async connectToVoiceChannel(
     guildId: string,
     voiceChannel: VoiceBasedChannel
